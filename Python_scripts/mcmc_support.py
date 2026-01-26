@@ -6,33 +6,7 @@ from config import *
 from cosmo_support import *
 # from support import normalise
 
-def log_prob(x, ivar):
-    return -0.5 * np.sum(ivar * x**2)
-
-
-def log_likelihood(theta, x, y, yerr):
-    m, b, log_f = theta
-    model = m * x + b
-    sigma2 = yerr**2 + model**2 * np.exp(2 * log_f)
-    return -0.5 * np.sum((y - model) ** 2 / sigma2 + np.log(sigma2))
-
-
-
-def log_prior(theta):
-    m, b, log_f = theta
-    if -5.0 < m < 0.5 and 0.0 < b < 10.0 and -10.0 < log_f < 1.0:
-        return 0.0
-    return -np.inf
-
-
-def log_probability(theta, x, y, yerr):
-    lp = log_prior(theta)
-    if not np.isfinite(lp):
-        return -np.inf
-    return lp + log_likelihood(theta, x, y, yerr)    
-
-
-
+import emcee
 
 def log_prior_frb(theta):
     """
@@ -57,11 +31,39 @@ def log_prior_frb(theta):
         w_min <= w <= w_max ):
         return 0.0  # Log(1) = 0, flat prior
     else:
+        return -np.inf
+
+
+def log_prior_frb_Pade(theta):
+    """
+    Calculate the log of the prior probability for a set of parameters.
+
+    Args:
+        theta: Array of parameters [hubble, omega, w]
+
+    Returns:
+        Log prior probability
+    """
+    hubble, omega, w = theta
+
+    # Define your prior ranges here
+    hubble_min, hubble_max = 40, 100 
+    omega_min, omega_max = 0.2, 1.0  
+    w_min, w_max = -3.0, -0.5 
+    
+    # Check if parameters are within prior ranges
+    if (hubble_min <= hubble <= hubble_max and 
+        omega_min <= omega <= omega_max and 
+        w_min <= w <= w_max ):
+        return 0.0  # Log(1) = 0, flat prior
+    else:
         return -np.inf   
+
+
 
 def log_likelihood_frb(theta, z_o, DM_o, s_DM_o):
     hubble, omega, w = theta
-    model = dispersion_measure(z=z_o, H0=hubble, Om=omega, w=w, alpha=0, f_IGM_0 = 0.84)
+    model = dispersion_measure(z=z_o, H0=hubble, Om=omega, w=w, alpha=f_alpha, f_IGM_0 = f_IGM)
     sigma2 = s_DM_o**2
     return -0.5 * np.sum((DM_o - model) ** 2 / sigma2)
 
@@ -88,8 +90,27 @@ def log_probability_frb_Pade(theta, z_o, DM_o, s_DM_o):
     return lp + log_likelihood_frb_Pade(theta, z_o, DM_o, s_DM_o)  
 
 
+##############################################
+############# Run MCMC analysis ##############
+##############################################
 
 
+def run_mcmc_analysis(z_c, DM_obs_c, s_DM_obs_c, log_probability,\
+                      H0_init=70, Om_init=0.5, w_init=-1.0, nwalk=20, N_samples=3000):
+    
+    ## Initialising MCMC
+    initial_params = np.array([H0_init, Om_init, w_init])
+    ndim = len(initial_params)
+    pos = initial_params + np.array([1, 5e-2, 1e-1]) * rng.normal(0, 1, size=(nwalk, ndim))
+
+    
+    sampler = emcee.EnsembleSampler(nwalk, ndim, log_probability, args=(z_c, DM_obs_c, s_DM_obs_c))
+    sampler.run_mcmc(pos, N_samples, progress=True);
+
+    samples_all = sampler.get_chain()
+    samples_flat = sampler.get_chain(discard=100, thin=15, flat=True)
+
+    return samples_all, samples_flat
 
 ###############################################
 ############### Analyse Results ###############
@@ -141,5 +162,7 @@ def mcmc_plot_results(samples, param_names, truths, savetitle=None, bins=30, tar
     
     if savetitle is not None:
         plt.savefig(savetitle+"_corner_plot.pdf", dpi=300, bbox_inches='tight')
+    
+    
     plt.show()
     plt.close()

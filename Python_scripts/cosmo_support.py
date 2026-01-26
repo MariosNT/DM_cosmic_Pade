@@ -84,7 +84,49 @@ def draw_redshift_distribution(z_array, H0=HUBBLE, Omega_m=OMEGA_MATTER, w=W_LAM
     return redshift_draws
 
 
+def generate_events(N_events, z_min, z_max=2.0, z_res=500,\
+                   H0=HUBBLE, Omega_m=OMEGA_MATTER, w=W_LAMBDA, alpha=f_ALPHA, f_IGM_0=f_IGM,\
+                   method="Gaussian", error_size=1, data_path='--'):
 
+    redshift_array = np.linspace(z_min, z_max, z_res)
+    z_centres = draw_redshift_distribution(redshift_array, H0, Omega_m, w, N_events)
+
+    # Theoretical DM, fiducial cosmo
+    DM_centres = dispersion_measure(z_centres, H0, Omega_m, w, alpha, f_IGM_0)
+
+    if method=='Gaussian':
+        ## Simple Gaussian pdf - Scatter observations according to errors
+        DM_obs_centre = rng.normal(DM_centres, SIGMA_DM)
+        s_DM_obs = np.repeat(SIGMA_DM, N_events)
+
+    elif method=='Pdf':
+        # DATA_PATH = './interpolation/095_C0mean.npz'
+        Sigmas, Errors, C0s, As, sigma_error_inter, C0_sigma_inter, A_sigma_inter = FRBs_load_and_create_interpolators(data_path)
+        
+        ## Modelling the DM pdf -- Standard HOF
+        DM_obs_centre = np.zeros_like(z_centres)
+        s_DM_obs = np.zeros_like(z_centres)
+        
+        for idx, z_val in enumerate(tqdm(z_centres)):
+            DM_obs_centre[idx], s_DM_obs[idx], _ = \
+                DM_diff_sampling(z=z_val, 
+                                S=S_FRB, HOF=HOF,
+                                sigma_error_inter=sigma_error_inter,
+                                C0_sigma_inter=C0_sigma_inter,
+                                A_sigma_inter=A_sigma_inter,
+                                H0=H0, f_diff=f_IGM_0, f_diff_alpha=alpha,
+                                Om=Omega_m, w=w, N_draws=1,
+                                Error_factor = error_size
+                                )
+            
+    else:
+        print("Warning! For method choose either 'Gaussian' or 'Pdf'.")
+
+
+    return z_centres, DM_centres, DM_obs_centre, s_DM_obs
+
+
+    
 
 ###############################################
 
@@ -102,11 +144,11 @@ def FRBs_load_and_create_interpolators(path):
     return Sigmas, Errors, C0s, As, sigma_error_inter, C0_sigma_inter, A_sigma_inter
 
 
-def f_IGM_redshift(z, alpha=0.11, f_IGM_0 = f_IGM):
+def f_IGM_redshift(z, alpha=f_ALPHA, f_IGM_0 = f_IGM):
     return f_IGM_0*(1+alpha*z/(1+z))
     
 
-def dDM_integrand_w(z, Om, w, alpha=0.0, f_IGM_0 = f_IGM):
+def dDM_integrand_w(z, Om, w, alpha=f_ALPHA, f_IGM_0 = f_IGM):
     """
     Function of the integrand of the DM formula, 
     eq. (12) in [arXiv:1805.12265].
@@ -212,58 +254,10 @@ def DM_pade_wCDM(z, H0, Om, w):
     
     return DM_factor*unit_transform*factor*(PhiDM_wCDM(x0, w)-PhiDM_wCDM(x, w)*(1.+z)**(1/2))           
 
-# def DM_IGM_O_bh_70(z, O_bh_70, Om=OMEGA_MATTER, w=-1, alpha=0.11, f_IGM_0 = f_IGM):
-#     """
-#     Function of the DM formula, 
-#     eq. (12) in [arXiv:1805.12265].
-    
-#     Update to compare with Macquart+ paper,
-#     [arXiv:2005.13161], Eq. (2).
-    
-#     Input
-#     ----------
-#     z : redshift
-    
-#     H0 : Hubble constant [km/s/Mpc]
-    
-#     Om : Omega matter
-    
-#     w : DE EoS parameter (w=-1 for Λ)
-    
-#     Output
-#     ---------
-#     DM : Dispersion measure [pc/cm^3]
-#     """    
-    
-#     O_bH_0=O_bh_70*70
 
-#     factor = 3*C_LIGHT*KM_2_MPC*O_bH_0/(8*PI*G_NEWTON*M_PROTON)*(7/8)
-#     integral = quad(dDM_integrand_w, 0, z, args=(Om, w, alpha, f_IGM_0))[0]
-    
-#     unit_transform = DM_2_PCCM3
-    
-#     DM = unit_transform*factor*integral
-    
-#     return DM
-
-
-
-
-# def sigma_DM_IGM(z, sigma_obs=1.5, sigma_MW=30, sigma_IGM=50, sigma_host=50):
-#     """
-#     Function that calculated the total error in the dispersion measure of an FRB,
-#     eq. (13) in [arXiv:1805.12265].
-#     """
-    
-#     sigma_total=sigma_obs**2+sigma_MW**2+sigma_IGM**2+(sigma_host/(1+z))**2
-    
-#     return np.sqrt(sigma_total)
-
-        
-        
-# ##################
-# ### PDF COSMIC ###
-# ##################
+##################
+### PDF COSMIC ###
+##################
 
 def pdf_DM_cosmo(Delta, C_0, A, sigma, alpha=3, beta=3):
     
@@ -276,64 +270,7 @@ def pdf_DM_cosmo(Delta, C_0, A, sigma, alpha=3, beta=3):
                     
     return result
 
-def DM_diff_HOf(z, HOf, Om=OMEGA_MATTER, w=W_LAMBDA):
-    
-    # def integrand(z, Om, w):
-    #     return (1+z)/np.sqrt(Om*(1+z)**3+(1-Om)*(1+z)**(3*(1+w)))
-
-    factor = 3*C_LIGHT*HOf/(8*PI*G_NEWTON*M_PROTON)*(7/8)
-    
-    integral, _ = quad(dDM_integrand_w, 0, z, args=(Om, w))
-    
-    unit_transform = DM_2_PCCM3*KM_2_MPC
-    
-    DM = unit_transform*factor*integral
-    
-    return DM
-    
-# ######################################################################
-# ### For Macquart way to find C0 and A, which \sigma_diff=f/sqrt(z) ###
-# ######################################################################
-
-# def f_sigma_DM(F, z, met="Mac"):
-#     if (met=="log"):
-#         return F/np.log(1+z)
-#     else:
-#         return F/np.sqrt(z)
-
-# def find_C0(F, z, sigma_met="Mac", alpha=3, beta=3, x_min=0, x_max=np.inf):
-#     """
-#     Use fsolve to find C_0 when to_C_0 = 1
-    
-#     Parameters:
-#     -----------
-#     F: float - Structure factor parameter 
-#     z: float - Redshift
-#     alpha: float - Alpha parameter
-#     initial_guess: float - C_0 initial guess
-    
-#     Returns:
-#     --------
-#     float: C_0 or None if solution not found
-#     """
-        
-#     sigma=f_sigma_DM(F,z,met=sigma_met)
-#     C0 = find_C0_sigma(sigma, x_min=x_min, x_max=x_max, alpha=alpha, beta=beta)
-    
-#     return C0    
-    
-
-# def find_A(C_0, F, z, alpha=3, beta=3, x_min=0, x_max=np.inf, sigma_met="Mac"):
-#     sigma=f_sigma_DM(F,z,met=sigma_met)
-    
-#     pdf, error = quad(lambda x: pdf_DM_cosmo(x, C_0, 1, sigma, alpha, beta),  x_min, x_max)
-    
-#     try:
-#         return 1/pdf
-            
-#     except Exception as e:
-#         print(f"find_A error，pdf={pdf}, C_0={C_0}, F={F}, z={z}, error: {e}")
-#         return None    
+  
 
 ######################################
 ### For error-sigma_{diff} version ###
@@ -374,10 +311,6 @@ def f_variance_delta(S, z, Om = OMEGA_MATTER, w = W_LAMBDA, met='num'):
         return S/z
     
 
-
-
-
-
 ################### FRB_GW DM sampling ###################
 
 def DM_diff_sampling(z, # redshift
@@ -385,21 +318,16 @@ def DM_diff_sampling(z, # redshift
                      #### if not choose 'standard' mode, use the following parameters ####
                      S, HOF=None, # FRB fitting results
                      #### if choose 'standard' mode, use the following parameters ####
-                     H0=HUBBLE, f_diff=0.84, f_diff_alpha=0, # FRB standard parameters
+                     H0=HUBBLE, f_diff=f_IGM, f_diff_alpha=f_ALPHA, # FRB standard parameters
                      Om=OMEGA_MATTER, w=W_LAMBDA, # other cosmology parameters
                      N_draws=1, int_N=2000, # sampling settings
-                     mode='standard', # generate events from standard cosmology parameters, else from FRB MCMC fitting results
                      Error_factor = 1.0
                      ):
     """
     Sampling DM_diff for a given redshift and cosmology.
     """
-    if (mode=='standard'):
-        DM_th=dispersion_measure(z=z, H0=H0, Om=Om, w=w, alpha=f_diff_alpha, f_IGM_0 = f_diff)
-    else:
-        if (HOF is None):
-            raise ValueError("HOF must be provided when not using standard mode.")
-        DM_th=DM_diff_HOf(z, HOF, Om=Om, w=w)
+    DM_th=dispersion_measure(z=z, H0=H0, Om=Om, w=w, alpha=f_diff_alpha, f_IGM_0 = f_diff)
+
         
     error=Error_factor * np.sqrt(f_variance_delta(S=S, z=z, Om=Om, w=w))
     s_DM_obs = error*DM_th

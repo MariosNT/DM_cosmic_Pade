@@ -262,13 +262,19 @@ def DM_pade_wCDM(z, H0, Om, w):
 def pdf_DM_cosmo(Delta, C_0, A, sigma, alpha=3, beta=3):
     
     Delta_array = np.asarray(Delta)
-    result = np.zeros_like(Delta_array, dtype=float) #np.full_like(Delta_array, 1e-10, dtype=np.float64) # np.zeros_like(Delta_array, dtype=float)
-    non_zero_indices = Delta_array != 0
+    result = np.zeros_like(Delta_array, dtype=float) 
+    non_zero_indices = (Delta_array != 0)
     if np.any(non_zero_indices):
         non_zero_Delta = Delta_array[non_zero_indices]
         result[non_zero_indices] = A*(non_zero_Delta**(-beta))*np.exp(-((non_zero_Delta**(-alpha)-C_0)**2)/(2*(alpha**2)*(sigma**2)))
                     
     return result
+
+
+def pdf_DM_cosmo_LHD(Delta, C_0, A, sigma, alpha=3, beta=3):
+    pdf = A*(Delta**(-beta))*np.exp(-((Delta**(-alpha)-C_0)**2)/(2*(alpha**2)*(sigma**2)))
+                    
+    return pdf    
 
   
 

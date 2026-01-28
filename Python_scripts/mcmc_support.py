@@ -39,7 +39,6 @@ def log_likelihood_frb_gauss(theta, z_o, DM_o, s_DM_o):
     hubble, omega, w = theta
     model = dispersion_measure(z=z_o, H0=hubble, Om=omega, w=w, alpha=f_ALPHA, f_IGM_0 = f_IGM)
     sigma2 = s_DM_o**2
-    print("logLHD:", -0.5 * np.sum((DM_o - model) ** 2 / sigma2))
     return -0.5 * np.sum((DM_o - model) ** 2 / sigma2)
 
 def log_probability_frb_gauss(theta, z_o, DM_o, s_DM_o,\
@@ -183,8 +182,8 @@ def mcmc_analyze_results(sampler, burn_in=10, thin=15, target_prob=0.6827):
     flat_samples = sampler.get_chain(discard=burn_in, thin=thin, flat=True)
     
     params_median = np.median(flat_samples, axis=0)
-    params_lower = np.percentile(flat_samples, 50-target_prob*50, axis=0)
-    params_upper = np.percentile(flat_samples, 50+target_prob*50, axis=0)
+    params_lower = np.percentile(flat_samples, 50-target_prob*100/2, axis=0)
+    params_upper = np.percentile(flat_samples, 50+target_prob*100/2, axis=0)
     
     params_errors = [(params_upper[i] - params_lower[i]) / 2 for i in range(len(params_median))]
     

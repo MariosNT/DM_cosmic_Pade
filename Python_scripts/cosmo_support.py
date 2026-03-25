@@ -35,9 +35,7 @@ def redshift_distribution(z_array, H0=HUBBLE, Omega_m=OMEGA_MATTER, w=W_LAMBDA):
     H0 : Hubble constant [km/s/Mpc]
     
     Omega_m : Omega matter
-    
-    method : Choose between `rates` and `uniform`. Defines the method used to draw random samples.
-    
+       
     Output
     ---------
     PDF : redshift distribution
@@ -96,8 +94,8 @@ def generate_events(N_events, z_min, z_max=2.0, z_res=500,\
 
     if method=='Gaussian':
         ## Simple Gaussian pdf - Scatter observations according to errors
-        DM_obs_centre = rng.normal(DM_centres, SIGMA_DM)
-        s_DM_obs = np.repeat(SIGMA_DM, N_events)
+        DM_obs_centre = rng.normal(DM_centres, error_size*SIGMA_DM)
+        s_DM_obs = error_size*np.repeat(SIGMA_DM, N_events)
 
     elif method=='Pdf':
         # DATA_PATH = './interpolation/095_C0mean.npz'

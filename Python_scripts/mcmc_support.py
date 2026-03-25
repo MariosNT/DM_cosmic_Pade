@@ -97,6 +97,32 @@ def log_probability_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path='--',\
     return lp + log_likelihood_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path)
 
 
+def log_likelihood_frb_pdf_corr(theta, z_o, DM_o, s_DM_o, data_path='--'):
+    hubble, omega, w = theta
+
+    model = dispersion_measure(z=z_o, H0=hubble, Om=omega, w=w, alpha=f_ALPHA, f_IGM_0 = f_IGM)
+
+    error=s_DM_o/model ##/DM_o
+
+    _, _, _, _, sigma_error_inter, C0_sigma_inter, A_sigma_inter = FRBs_load_and_create_interpolators(data_path)
+    sigma_diff=sigma_error_inter(error)
+    C0=C0_sigma_inter(sigma_diff)
+    A=A_sigma_inter(sigma_diff)
+
+    p_obs = pdf_DM_cosmo_LHD(Delta=DM_o/model, C_0=C0, A=A, sigma=sigma_diff, alpha=3, beta=3)/model
+   
+    return np.sum(np.log10(p_obs))
+
+def log_probability_frb_pdf_corr(theta, z_o, DM_o, s_DM_o, data_path='--',\
+                        H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0):
+    lp = log_prior_frb(theta, H0_min, H0_max, Om_min, Om_max, W_min, W_max)
+    
+    if (not np.isfinite(lp)):
+        return -np.inf
+    
+    return lp + log_likelihood_frb_pdf_corr(theta, z_o, DM_o, s_DM_o, data_path)
+
+
 ###########################
 ############ Pade PDF model
 

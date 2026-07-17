@@ -71,31 +71,6 @@ def log_probability_frb_Pade_gauss(theta, z_o, DM_o, s_DM_o,\
 ###########################
 ######## Standard PDF model
 
-# def log_likelihood_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path='--'):
-#     hubble, omega, w = theta
-
-#     model = dispersion_measure(z=z_o, H0=hubble, Om=omega, w=w, alpha=f_ALPHA, f_IGM_0 = f_IGM)
-
-#     error=s_DM_o/DM_o
-
-#     _, _, _, _, sigma_error_inter, C0_sigma_inter, A_sigma_inter = FRBs_load_and_create_interpolators(data_path)
-#     sigma_diff=sigma_error_inter(error)
-#     C0=C0_sigma_inter(sigma_diff)
-#     A=A_sigma_inter(sigma_diff)
-
-#     p_obs = pdf_DM_cosmo_LHD(Delta=model/DM_o, C_0=C0, A=A, sigma=sigma_diff, alpha=3, beta=3)/DM_o
-   
-#     return np.sum(np.log10(p_obs))
-
-# def log_probability_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path='--',\
-#                         H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0):
-#     lp = log_prior_frb(theta, H0_min, H0_max, Om_min, Om_max, W_min, W_max)
-    
-#     if (not np.isfinite(lp)):
-#         return -np.inf
-    
-#     return lp + log_likelihood_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path)
-
 
 def log_likelihood_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path='--'):
     hubble, omega, w = theta
@@ -215,6 +190,20 @@ def mcmc_analyze_results(sampler, burn_in=10, thin=15, target_prob=0.6827):
     
     return flat_samples, params_median, params_errors
 
+
+def mcmc_samples_quantiles(flat_samples, target_prob=0.6827, labels=['H0', 'Om', 'w']):
+    """Analyze MCMC results (unchanged from original)"""
+    
+    params_median = np.median(flat_samples, axis=0)
+    params_lower = np.percentile(flat_samples, 50-target_prob*100/2, axis=0)
+    params_upper = np.percentile(flat_samples, 50+target_prob*100/2, axis=0)
+    
+    params_errors = [(params_upper[i] - params_lower[i]) / 2 for i in range(len(params_median))]
+
+    for idx, params in enumerate(params_median):
+        print(f"For {labels[idx]} the median is: {round(params,2)} with 68% error range: {round(params_errors[idx], 2)}")
+    
+    return params_median, params_errors
 
 def mcmc_plot_results(samples, param_names, truths, savetitle=None, bins=30, target_prob=0.6827, font_size=15):
     """

@@ -166,31 +166,24 @@ def log_probability_frb_Pade_pdf(theta, z_o, DM_o, s_DM_o, data_path='--',\
 def log_likelihood_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--'):
     hubble, omega, w, S_host, e_mu = theta
 
-    log_like = 0.0
-    
-    for idx_z, z_val in enumerate(z_o):
-    
-        model = DM_pade_wCDM(z=z_val, H0=hubble, Om=omega, w=w)
-    
-        error=s_DM_o/model
-    
-        _, _, _, _, sigma_error_inter, C0_sigma_inter, A_sigma_inter = FRBs_load_and_create_interpolators(data_path)
-        sigma_diff=sigma_error_inter(error)
-        C0=C0_sigma_inter(sigma_diff)
-        A=A_sigma_inter(sigma_diff)
-    
-        
-    
-        p_obs = pdf_DM_joint_LHD(DM_o[idx_z], z_val, model, e_mu, S_host, sigma_diff, C0, A,\
-                         alpha=3, beta=3, space='Delta', dropna=True, int_N=5000)
-        log_prob = np.log10(p_obs)
-    
-        if np.any(np.isnan(log_prob)):
-            return -np.inf
-        else:
-            log_like += log_prob
+    model = DM_pade_wCDM(z=z_o, H0=hubble, Om=omega, w=w)
 
-    return log_like
+    error=s_DM_o/model
+
+    _, _, _, _, sigma_error_inter, C0_sigma_inter, A_sigma_inter = FRBs_load_and_create_interpolators(data_path)
+    sigma_diff=sigma_error_inter(error)
+    C0=C0_sigma_inter(sigma_diff)
+    A=A_sigma_inter(sigma_diff)
+
+    p_obs = pdf_DM_joint_LHD(DM_o, z_o, model, e_mu, S_host, sigma_diff, C0, A,\
+                     alpha=3, beta=3, space='Delta', dropna=True, int_N=5000)
+    log_prob = np.sum(np.log10(p_obs))
+
+    if np.any(np.isnan(log_prob)):
+        return -np.inf
+    else:
+        return log_prob
+
 
 
 def log_probability_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--',\

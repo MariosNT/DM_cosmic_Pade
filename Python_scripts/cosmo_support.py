@@ -293,11 +293,20 @@ def pdf_DM_joint_LHD(DM_frb_max, z, # Data
                      int_N=5000 # number of integration points
                      ):
 
+    Ndata = len(z)
+
+    DM_frb_max = DM_frb_max.reshape(Ndata, 1)
+    z = z.reshape(Ndata, 1)
+    DM_cosmic_theory = DM_cosmic_theory.reshape(Ndata, 1)
+    sigma = sigma.reshape(Ndata, 1)
+    C0 = C0.reshape(Ndata, 1)
+    A = A.reshape(Ndata, 1)
+    
     ## Integration
     if (space=='Delta'):
         
         ## variable=Delta
-        variable_array = np.linspace(0, DM_frb_max / DM_cosmic_theory, int_N)
+        variable_array = np.linspace(1e-2, DM_frb_max / DM_cosmic_theory, int_N).T
 
         ## Cosmic calculation
         p_cosmic = pdf_DM_cosmo_LHD(Delta=variable_array, C_0=C0, A=A, sigma=sigma, alpha=alpha, beta=beta)
@@ -315,10 +324,11 @@ def pdf_DM_joint_LHD(DM_frb_max, z, # Data
         p_host[np.isnan(p_host)] = 0
         p_cosmic[np.isnan(p_cosmic)] = 0
         
-    ## Combine together    
-    prob = np.trapezoid(p_host*p_cosmic, x=variable_array)
+    ## Combine together
+    prod = p_host*p_cosmic
+    prob = np.trapezoid(prod, x=variable_array, axis=2)
         
-    return prob*factor
+    return (factor.T)*prob
 
   
 

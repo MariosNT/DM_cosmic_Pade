@@ -181,3 +181,5 @@ cython_debug/
 .cursorindexingignore
 /Notebooks/figures
 /Notebooks/posterior
+/Notebooks/interpolation
+/Data

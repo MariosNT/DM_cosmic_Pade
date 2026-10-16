@@ -30,7 +30,35 @@ def log_prior_frb(theta, H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2
         W_min <= w <= W_max ):
         return 0.0  # Log(1) = 0, flat prior
     else:
-        return -np.inf        
+        return -np.inf
+
+def log_prior_frb_host(theta, H0_min=40, H0_max=100,\
+                       Om_min=0.0, Om_max=1.0,\
+                       W_min=-2.0, W_max=0.0,\
+                       Shost_min=0.2, Shost_max=1.4,\
+                       e_mu_min=10, e_mu_max=300):
+    """
+    Calculate the log of the prior probability for a set of parameters.
+
+    Args:
+        theta: Array of parameters [hubble, omega, w, Shost, e_mu], 
+                Cosmology + Host properties
+
+    Returns:
+        Log prior probability
+    """
+    hubble, omega, w, Shost, e_mu = theta
+    
+    # Check if parameters are within prior ranges
+    if (H0_min <= hubble <= H0_max and 
+        Om_min <= omega <= Om_max and 
+        W_min <= w <= W_max and
+        Shost_min <= Shost <= Shost_max and
+        e_mu_min <= e_mu <= e_mu_max
+       ):
+        return 0.0  # Log(1) = 0, flat prior
+    else:
+        return -np.inf 
 
 ###########################
 ### Standard Gaussian model
@@ -128,7 +156,54 @@ def log_probability_frb_Pade_pdf(theta, z_o, DM_o, s_DM_o, data_path='--',\
     if (not np.isfinite(lp)):
         return -np.inf
     
-    return lp + log_likelihood_frb_Pade_pdf(theta, z_o, DM_o, s_DM_o, data_path)    
+    return lp + log_likelihood_frb_Pade_pdf(theta, z_o, DM_o, s_DM_o, data_path)
+
+
+
+############################################
+############ Pade PDF model (including host)
+
+def log_likelihood_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--'):
+    hubble, omega, w, S_host, e_mu = theta
+
+    log_like = 0.0
+    
+    for idx_z, z_val in enumerate(z_o):
+    
+        model = DM_pade_wCDM(z=z_val, H0=hubble, Om=omega, w=w)
+    
+        error=s_DM_o/model
+    
+        _, _, _, _, sigma_error_inter, C0_sigma_inter, A_sigma_inter = FRBs_load_and_create_interpolators(data_path)
+        sigma_diff=sigma_error_inter(error)
+        C0=C0_sigma_inter(sigma_diff)
+        A=A_sigma_inter(sigma_diff)
+    
+        
+    
+        p_obs = pdf_DM_joint_LHD(DM_o[idx_z], z_val, model, e_mu, S_host, sigma_diff, C0, A,\
+                         alpha=3, beta=3, space='Delta', dropna=True, int_N=5000)
+        log_prob = np.log10(p_obs)
+    
+        if np.any(np.isnan(log_prob)):
+            return -np.inf
+        else:
+            log_like += log_prob
+
+    return log_like
+
+
+def log_probability_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--',\
+                        H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0,\
+                        S_host_min=0.2, S_host_max=1.4, e_mu_min=10, e_mu_max=300):
+    
+    lp = log_prior_frb_host(theta, H0_min, H0_max, Om_min, Om_max, W_min, W_max,\
+                            S_host_min, S_host_max, e_mu_min, e_mu_max)
+    
+    if (not np.isfinite(lp)):
+        return -np.inf
+    
+    return lp + log_likelihood_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path)       
 
 
 ##############################################
@@ -171,7 +246,28 @@ def run_mcmc_analysis_pdf(z_c, DM_obs_c, s_DM_obs_c, log_probability, data_path=
     samples_all = sampler.get_chain()
     samples_flat = sampler.get_chain(discard=burn_in, thin=15, flat=True)
 
-    return samples_all, samples_flat    
+    return samples_all, samples_flat
+
+
+def run_mcmc_analysis_pdf_host(z_c, DM_obs_c, s_DM_obs_c, log_probability, data_path='--',\
+                      H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0,\
+                      S_host_min=0.2, S_host_max=1.4, e_mu_min=10, e_mu_max=300,\
+                      H0_init=70, Om_init=0.5, w_init=-1.0, S_host_init=1.0, e_mu_init=100,\
+                      nwalk=20, N_samples=3000, burn_in=100):
+    
+    ## Initialising MCMC
+    initial_params = np.array([H0_init, Om_init, w_init, S_host_init, e_mu_init])
+    ndim = len(initial_params)
+    pos = initial_params + np.array([1, 5e-2, 1e-1, 1e-2, 5]) * rng.normal(0, 1, size=(nwalk, ndim))
+
+    
+    sampler = emcee.EnsembleSampler(nwalk, ndim, log_probability, args=(z_c, DM_obs_c, s_DM_obs_c, data_path, H0_min, H0_max, Om_min, Om_max, W_min, W_max, S_host_min, S_host_max, e_mu_min, e_mu_max))
+    sampler.run_mcmc(pos, N_samples, progress=True);
+
+    samples_all = sampler.get_chain()
+    samples_flat = sampler.get_chain(discard=burn_in, thin=15, flat=True)
+
+    return samples_all, samples_flat  
 
 ###############################################
 ############### Analyse Results ###############

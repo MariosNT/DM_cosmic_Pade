@@ -253,9 +253,9 @@ def DM_pade_wCDM(z, H0, Om, w):
     return DM_factor*unit_transform*factor*(PhiDM_wCDM(x0, w)-PhiDM_wCDM(x, w)*(1.+z)**(1/2))           
 
 
-##################
-### PDF COSMIC ###
-##################
+#########################
+### PDF COSMIC & HOST ###
+#########################
 
 def pdf_DM_cosmo(Delta, C_0, A, sigma, alpha=3, beta=3):
     
@@ -272,7 +272,53 @@ def pdf_DM_cosmo(Delta, C_0, A, sigma, alpha=3, beta=3):
 def pdf_DM_cosmo_LHD(Delta, C_0, A, sigma, alpha=3, beta=3):
     pdf = A*(Delta**(-beta))*np.exp(-((Delta**(-alpha)-C_0)**2)/(2*(alpha**2)*(sigma**2)))
                     
-    return pdf    
+    return pdf
+
+def pdf_DM_host_LHD(DM, e_mu, sigma_host):
+    # e^\mu with 20-200 pc cm^{-3} and \sigma_{host} in 0.2-2.0
+    
+    pdf = 1.0/(sigma_host*np.sqrt(2*np.pi)*DM) * \
+                               np.exp(-(np.log(DM)-np.log(e_mu))**2/(2*(sigma_host**2)))
+    
+    return pdf
+
+
+def pdf_DM_joint_LHD(DM_frb_max, z, # Data
+                     DM_cosmic_theory, # Depends on cosmology parameters
+                     e_mu, sigma_host, # host parameters
+                     sigma, C0, A, # sigma(error), C0(sigma) and A(sigma)
+                     alpha=3, beta=3,
+                     space='Delta',
+                     dropna=True, # drop nan value
+                     int_N=5000 # number of integration points
+                     ):
+
+    ## Integration
+    if (space=='Delta'):
+        
+        ## variable=Delta
+        variable_array = np.linspace(0, DM_frb_max / DM_cosmic_theory, int_N)
+
+        ## Cosmic calculation
+        p_cosmic = pdf_DM_cosmo_LHD(Delta=variable_array, C_0=C0, A=A, sigma=sigma, alpha=alpha, beta=beta)
+        
+        ## Host calculation
+        p_host = pdf_DM_host_LHD((1+z)*(DM_frb_max - DM_cosmic_theory * variable_array), e_mu, sigma_host)
+        
+        ## factor
+        factor=1+z
+    
+    else:
+        raise ValueError("Invalid space parameter. Use 'Delta'")
+    
+    if (dropna==True):
+        p_host[np.isnan(p_host)] = 0
+        p_cosmic[np.isnan(p_cosmic)] = 0
+        
+    ## Combine together    
+    prob = np.trapezoid(p_host*p_cosmic, x=variable_array)
+        
+    return prob*factor
 
   
 

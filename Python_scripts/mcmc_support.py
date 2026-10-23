@@ -6,13 +6,32 @@ import emcee
 from config import *
 from cosmo_support import *
 
+# Useful when running the PDF Pade + host + ...
+
+from functools import lru_cache
+
+@lru_cache(maxsize=None)
+def _get_interpolators(data_path):
+    return FRBs_load_and_create_interpolators(data_path)
+
+####################
+### Prior Ranges ###
+####################
+
+H0_MIN, H0_MAX = 20, 120
+Om_MIN, Om_MAX = 0.0, 1.0
+W_MIN, W_MAX   = -2.0, 0.0
+SH_MIN, SH_MAX = 0.1, 1.4
+EM_MIN, EM_MAX = 20, 350
+SD_MIN, SD_MAX = 50, 400
+
 
 ##############################
 ##### Priors & Likelihoods ###
 ##############################
 
 
-def log_prior_frb(theta, H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0):
+def log_prior_frb(theta, H0_min=H0_MIN, H0_max=H0_MAX, Om_min=Om_MIN, Om_max=Om_MAX, W_min=W_MIN, W_max=W_MAX):
     """
     Calculate the log of the prior probability for a set of parameters.
 
@@ -32,11 +51,11 @@ def log_prior_frb(theta, H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2
     else:
         return -np.inf
 
-def log_prior_frb_host(theta, H0_min=40, H0_max=100,\
-                       Om_min=0.0, Om_max=1.0,\
-                       W_min=-2.0, W_max=0.0,\
-                       Shost_min=0.2, Shost_max=1.4,\
-                       e_mu_min=10, e_mu_max=300):
+def log_prior_frb_host(theta, H0_min=H0_MIN, H0_max=H0_MAX,\
+                       Om_min=Om_MIN, Om_max=Om_MAX,\
+                       W_min=W_MIN, W_max=W_MAX,\
+                       Shost_min=SH_MIN, Shost_max=SH_MAX,\
+                       e_mu_min=EM_MIN, e_mu_max=EM_MAX):
     """
     Calculate the log of the prior probability for a set of parameters.
 
@@ -58,6 +77,36 @@ def log_prior_frb_host(theta, H0_min=40, H0_max=100,\
        ):
         return 0.0  # Log(1) = 0, flat prior
     else:
+        return -np.inf
+
+def log_prior_frb_host_SD(theta, H0_min=H0_MIN, H0_max=H0_MAX,\
+                       Om_min=Om_MIN, Om_max=Om_MAX,\
+                       W_min=W_MIN, W_max=W_MAX,\
+                       Shost_min=SH_MIN, Shost_max=SH_MAX,\
+                       e_mu_min=EM_MIN, e_mu_max=EM_MAX,\
+                       SD_min=SD_MIN, SD_max=SD_MAX):
+    """
+    Calculate the log of the prior probability for a set of parameters.
+
+    Args:
+        theta: Array of parameters [hubble, omega, w, Shost, e_mu], 
+                Cosmology + Host properties
+
+    Returns:
+        Log prior probability
+    """
+    hubble, omega, w, Shost, e_mu, SD = theta
+    
+    # Check if parameters are within prior ranges
+    if (H0_min <= hubble <= H0_max and 
+        Om_min <= omega <= Om_max and 
+        W_min <= w <= W_max and
+        Shost_min <= Shost <= Shost_max and
+        e_mu_min <= e_mu <= e_mu_max and
+        SD_min <= SD <= SD_max
+       ):
+        return 0.0  # Log(1) = 0, flat prior
+    else:
         return -np.inf 
 
 ###########################
@@ -70,7 +119,10 @@ def log_likelihood_frb_gauss(theta, z_o, DM_o, s_DM_o):
     return -0.5 * np.sum((DM_o - model) ** 2 / sigma2)
 
 def log_probability_frb_gauss(theta, z_o, DM_o, s_DM_o,\
-                        H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0):
+                              H0_min=H0_MIN, H0_max=H0_MAX,\
+                              Om_min=Om_MIN, Om_max=Om_MAX,\
+                              W_min=W_MIN, W_max=W_MAX):
+    
     lp = log_prior_frb(theta, H0_min, H0_max, Om_min, Om_max, W_min, W_max)
     if not np.isfinite(lp):
         return -np.inf
@@ -87,7 +139,9 @@ def log_likelihood_frb_Pade_gauss(theta, z_o, DM_o, s_DM_o):
     return -0.5 * np.sum((DM_o - model) ** 2 / sigma2)
 
 def log_probability_frb_Pade_gauss(theta, z_o, DM_o, s_DM_o,\
-                            H0_min=40, H0_max=100, Om_min=0.2, Om_max=1.0, W_min=-3.0, W_max=-0.5):
+                                   H0_min=H0_MIN, H0_max=H0_MAX,\
+                                   Om_min=Om_MIN, Om_max=Om_MAX,\
+                                   W_min=W_MIN, W_max=W_MAX):
     lp = log_prior_frb(theta, H0_min, H0_max, Om_min, Om_max, W_min, W_max)
     if not np.isfinite(lp):
         return -np.inf
@@ -99,7 +153,6 @@ def log_probability_frb_Pade_gauss(theta, z_o, DM_o, s_DM_o,\
 ###########################
 ######## Standard PDF model
 
-
 def log_likelihood_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path='--'):
     hubble, omega, w = theta
 
@@ -107,8 +160,13 @@ def log_likelihood_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path='--'):
 
     error=s_DM_o/model
 
+    error_inter_min = 1e-3
+    error_inter_max = 0.71
+
+    error_clipped = np.clip(error, error_inter_min, error_inter_max)
+
     _, _, _, _, sigma_error_inter, C0_sigma_inter, A_sigma_inter = FRBs_load_and_create_interpolators(data_path)
-    sigma_diff=sigma_error_inter(error)
+    sigma_diff=sigma_error_inter(error_clipped)
     C0=C0_sigma_inter(sigma_diff)
     A=A_sigma_inter(sigma_diff)
 
@@ -117,7 +175,10 @@ def log_likelihood_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path='--'):
     return np.sum(np.log10(p_obs))
 
 def log_probability_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path='--',\
-                        H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0):
+                            H0_min=H0_MIN, H0_max=H0_MAX,\
+                            Om_min=Om_MIN, Om_max=Om_MAX,\
+                            W_min=W_MIN, W_max=W_MAX):
+    
     lp = log_prior_frb(theta, H0_min, H0_max, Om_min, Om_max, W_min, W_max)
     
     if (not np.isfinite(lp)):
@@ -129,8 +190,6 @@ def log_probability_frb_pdf(theta, z_o, DM_o, s_DM_o, data_path='--',\
 ###########################
 ############ Pade PDF model
 
-
-
 def log_likelihood_frb_Pade_pdf(theta, z_o, DM_o, s_DM_o, data_path='--'):
     hubble, omega, w = theta
 
@@ -138,9 +197,14 @@ def log_likelihood_frb_Pade_pdf(theta, z_o, DM_o, s_DM_o, data_path='--'):
 
     error=s_DM_o/model
 
+    error_inter_min = 1e-3
+    error_inter_max = 0.71
+
+    error_clipped = np.clip(error, error_inter_min, error_inter_max)
+    
     _, _, _, _, sigma_error_inter, C0_sigma_inter, A_sigma_inter = FRBs_load_and_create_interpolators(data_path)
     
-    sigma_diff=sigma_error_inter(error)
+    sigma_diff=sigma_error_inter(error_clipped)
     C0=C0_sigma_inter(sigma_diff)
     A=A_sigma_inter(sigma_diff)
 
@@ -153,7 +217,10 @@ def log_likelihood_frb_Pade_pdf(theta, z_o, DM_o, s_DM_o, data_path='--'):
         return log_prob
 
 def log_probability_frb_Pade_pdf(theta, z_o, DM_o, s_DM_o, data_path='--',\
-                        H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0):
+                                 H0_min=H0_MIN, H0_max=H0_MAX,\
+                                 Om_min=Om_MIN, Om_max=Om_MAX,\
+                                 W_min=W_MIN, W_max=W_MAX):
+    
     lp = log_prior_frb(theta, H0_min, H0_max, Om_min, Om_max, W_min, W_max)
     
     if (not np.isfinite(lp)):
@@ -165,13 +232,7 @@ def log_probability_frb_Pade_pdf(theta, z_o, DM_o, s_DM_o, data_path='--',\
 
 ############################################
 ############ Pade PDF model (including host)
-
-from functools import lru_cache
-
-@lru_cache(maxsize=None)
-def _get_interpolators(data_path):
-    return FRBs_load_and_create_interpolators(data_path)
-    
+  
 
 def log_likelihood_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--'):
     hubble, omega, w, S_host, e_mu = theta
@@ -180,8 +241,13 @@ def log_likelihood_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--'):
 
     error=s_DM_o/model
 
+    error_inter_min = 1e-3
+    error_inter_max = 0.71
+
+    error_clipped = np.clip(error, error_inter_min, error_inter_max)
+
     _, _, _, _, sigma_error_inter, C0_sigma_inter, A_sigma_inter = _get_interpolators(data_path) #FRBs_load_and_create_interpolators(data_path)
-    sigma_diff=sigma_error_inter(error)
+    sigma_diff=sigma_error_inter(error_clipped)
     C0=C0_sigma_inter(sigma_diff)
     A=A_sigma_inter(sigma_diff)
 
@@ -197,8 +263,11 @@ def log_likelihood_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--'):
 
 
 def log_probability_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--',\
-                        H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0,\
-                        S_host_min=0.2, S_host_max=1.4, e_mu_min=10, e_mu_max=300):
+                        H0_min=H0_MIN, H0_max=H0_MAX,\
+                        Om_min=Om_MIN, Om_max=Om_MAX,\
+                        W_min=W_MIN, W_max=W_MAX,\
+                        S_host_min=SH_MIN, S_host_max=SH_MAX,\
+                        e_mu_min=EM_MIN, e_mu_max=EM_MAX):
     
     lp = log_prior_frb_host(theta, H0_min, H0_max, Om_min, Om_max, W_min, W_max,\
                             S_host_min, S_host_max, e_mu_min, e_mu_max)
@@ -206,7 +275,54 @@ def log_probability_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--',\
     if (not np.isfinite(lp)):
         return -np.inf
     
-    return lp + log_likelihood_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path)       
+    return lp + log_likelihood_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path)
+
+
+######################################################
+############ Pade PDF model (including host) & S error
+
+    
+def log_likelihood_frb_Pade_pdf_host_SD(theta, z_o, DM_o, data_path='--'):
+    hubble, omega, w, S_host, e_mu, SD = theta
+
+    model = DM_pade_wCDM(z=z_o, H0=hubble, Om=omega, w=w)
+
+    error=SD/model
+
+    error_inter_min = 1e-3
+    error_inter_max = 0.71
+
+    error_clipped = np.clip(error, error_inter_min, error_inter_max)
+
+    _, _, _, _, sigma_error_inter, C0_sigma_inter, A_sigma_inter = _get_interpolators(data_path) 
+    sigma_diff=sigma_error_inter(error_clipped)
+    C0=C0_sigma_inter(sigma_diff)
+    A=A_sigma_inter(sigma_diff)
+
+    p_obs = pdf_DM_joint_LHD(DM_o, z_o, model, e_mu, S_host, sigma_diff, C0, A,\
+                     alpha=3, beta=3, space='Delta', dropna=True, int_N=1500)
+    log_prob = np.sum(np.log10(p_obs))
+
+    if np.any(np.isnan(log_prob)):
+        return -np.inf
+    else:
+        return log_prob
+
+def log_probability_frb_Pade_pdf_host_SD(theta, z_o, DM_o, data_path='--',\
+                        H0_min=H0_MIN, H0_max=H0_MAX,\
+                        Om_min=Om_MIN, Om_max=Om_MAX,\
+                        W_min=W_MIN, W_max=W_MAX,\
+                        S_host_min=SH_MIN, S_host_max=SH_MAX,\
+                        e_mu_min=EM_MIN, e_mu_max=EM_MAX,\
+                        SD_min=SD_MIN, SD_max=SD_MAX):
+    
+    lp = log_prior_frb_host_SD(theta, H0_min, H0_max, Om_min, Om_max, W_min, W_max,\
+                            S_host_min, S_host_max, e_mu_min, e_mu_max, SD_min, SD_max)
+    
+    if (not np.isfinite(lp)):
+        return -np.inf
+    
+    return lp + log_likelihood_frb_Pade_pdf_host_SD(theta, z_o, DM_o, data_path) 
 
 
 ##############################################
@@ -215,7 +331,8 @@ def log_probability_frb_Pade_pdf_host(theta, z_o, DM_o, s_DM_o, data_path='--',\
 
 
 def run_mcmc_analysis(z_c, DM_obs_c, s_DM_obs_c, log_probability,\
-                      H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0,\
+                      H0_min=H0_MIN, H0_max=H0_MAX,\
+                      Om_min=Om_MIN, Om_max=Om_MAX, W_min=W_MIN, W_max=W_MAX,\
                       H0_init=70, Om_init=0.5, w_init=-1.0, nwalk=20, N_samples=3000, burn_in=100):
     
     ## Initialising MCMC
@@ -234,7 +351,8 @@ def run_mcmc_analysis(z_c, DM_obs_c, s_DM_obs_c, log_probability,\
 
 
 def run_mcmc_analysis_pdf(z_c, DM_obs_c, s_DM_obs_c, log_probability, data_path='--',\
-                      H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0,\
+                      H0_min=H0_MIN, H0_max=H0_MAX,\
+                      Om_min=Om_MIN, Om_max=Om_MAX, W_min=W_MIN, W_max=W_MAX,\
                       H0_init=70, Om_init=0.5, w_init=-1.0, nwalk=20, N_samples=3000, burn_in=100):
     
     ## Initialising MCMC
@@ -253,10 +371,13 @@ def run_mcmc_analysis_pdf(z_c, DM_obs_c, s_DM_obs_c, log_probability, data_path=
 
 
 def run_mcmc_analysis_pdf_host(z_c, DM_obs_c, s_DM_obs_c, log_probability, data_path='--',\
-                      H0_min=40, H0_max=100, Om_min=0.0, Om_max=1.0, W_min=-2.0, W_max=0.0,\
-                      S_host_min=0.2, S_host_max=1.4, e_mu_min=10, e_mu_max=300,\
-                      H0_init=70, Om_init=0.5, w_init=-1.0, S_host_init=1.0, e_mu_init=100,\
-                      nwalk=20, N_samples=3000, burn_in=100):
+                       H0_min=H0_MIN, H0_max=H0_MAX,\
+                       Om_min=Om_MIN, Om_max=Om_MAX,\
+                       W_min=W_MIN, W_max=W_MAX,\
+                       S_host_min=SH_MIN, S_host_max=SH_MAX,\
+                       e_mu_min=EM_MIN, e_mu_max=EM_MAX,\
+                       H0_init=70, Om_init=0.5, w_init=-1.0, S_host_init=1.0, e_mu_init=100,\
+                       nwalk=20, N_samples=3000, burn_in=100):
     
     ## Initialising MCMC
     initial_params = np.array([H0_init, Om_init, w_init, S_host_init, e_mu_init])
@@ -267,10 +388,39 @@ def run_mcmc_analysis_pdf_host(z_c, DM_obs_c, s_DM_obs_c, log_probability, data_
     sampler = emcee.EnsembleSampler(nwalk, ndim, log_probability, args=(z_c, DM_obs_c, s_DM_obs_c, data_path, H0_min, H0_max, Om_min, Om_max, W_min, W_max, S_host_min, S_host_max, e_mu_min, e_mu_max))
     sampler.run_mcmc(pos, N_samples, progress=True);
 
+    tau_time = sampler.get_autocorr_time(quiet=True)
+
     samples_all = sampler.get_chain()
     samples_flat = sampler.get_chain(discard=burn_in, thin=15, flat=True)
 
-    return samples_all, samples_flat  
+    return samples_all, samples_flat, tau_time.max()
+    
+
+def run_mcmc_analysis_pdf_host_SD(z_c, DM_obs_c, log_probability, data_path='--',\
+                       H0_min=H0_MIN, H0_max=H0_MAX,\
+                       Om_min=Om_MIN, Om_max=Om_MAX,\
+                       W_min=W_MIN, W_max=W_MAX,\
+                       S_host_min=SH_MIN, S_host_max=SH_MAX,\
+                       e_mu_min=EM_MIN, e_mu_max=EM_MAX,\
+                       SD_min=SD_MIN, SD_max=SD_MAX,\
+                       H0_init=70, Om_init=0.5, w_init=-1.0, S_host_init=1.0, e_mu_init=100, SD_init=100,\
+                       nwalk=20, N_samples=3000, burn_in=100):
+    
+    ## Initialising MCMC
+    initial_params = np.array([H0_init, Om_init, w_init, S_host_init, e_mu_init, SD_init])
+    ndim = len(initial_params)
+    pos = initial_params + np.array([1, 5e-2, 1e-1, 1e-2, 5, 5]) * rng.normal(0, 1, size=(nwalk, ndim))
+
+    
+    sampler = emcee.EnsembleSampler(nwalk, ndim, log_probability, args=(z_c, DM_obs_c, data_path, H0_min, H0_max, Om_min, Om_max, W_min, W_max, S_host_min, S_host_max, e_mu_min, e_mu_max, SD_min, SD_max))
+    sampler.run_mcmc(pos, N_samples, progress=True);
+
+    tau_time = sampler.get_autocorr_time(quiet=True)
+
+    samples_all = sampler.get_chain()
+    samples_flat = sampler.get_chain(discard=burn_in, thin=15, flat=True)
+
+    return samples_all, samples_flat, tau_time.max()
 
 ###############################################
 ############### Analyse Results ###############

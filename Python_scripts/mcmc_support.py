@@ -23,7 +23,7 @@ Om_MIN, Om_MAX = 0.0, 1.0
 W_MIN, W_MAX   = -2.0, 0.0
 SH_MIN, SH_MAX = 0.1, 1.4
 EM_MIN, EM_MAX = 20, 350
-SD_MIN, SD_MAX = 50, 400
+SD_MIN, SD_MAX = 0, 900 # Limits for Gaussian prior #50, 400
 
 
 ##############################
@@ -96,6 +96,10 @@ def log_prior_frb_host_SD(theta, H0_min=H0_MIN, H0_max=H0_MAX,\
         Log prior probability
     """
     hubble, omega, w, Shost, e_mu, SD = theta
+
+    ## Gaussian prior for SD (ignoring the constant normalisation)
+    mu_SD, sigma_SD = 180.0, 40.0
+    lp_SD = -0.5 * ((SD - mu_SD) / sigma_SD) ** 2 # - np.log(np.sqrt(2 * np.pi) * sigma_SD)
     
     # Check if parameters are within prior ranges
     if (H0_min <= hubble <= H0_max and 
@@ -105,7 +109,7 @@ def log_prior_frb_host_SD(theta, H0_min=H0_MIN, H0_max=H0_MAX,\
         e_mu_min <= e_mu <= e_mu_max and
         SD_min <= SD <= SD_max
        ):
-        return 0.0  # Log(1) = 0, flat prior
+        return 0.0 + lp_SD # Log(1) = 0, flat prior
     else:
         return -np.inf 
 
